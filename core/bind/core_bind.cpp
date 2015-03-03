@@ -12,9 +12,9 @@ Ref<ResourceInteractiveLoader> _ResourceLoader::load_interactive(const String& p
 	return ResourceLoader::load_interactive(p_path,p_type_hint);
 }
 
-RES _ResourceLoader::load(const String &p_path,const String& p_type_hint) {
+RES _ResourceLoader::load(const String &p_path,const String& p_type_hint, bool p_no_cache) {
 
-	RES ret =  ResourceLoader::load(p_path,p_type_hint);
+	RES ret =  ResourceLoader::load(p_path,p_type_hint, p_no_cache);
 	return ret;
 }
 
@@ -59,7 +59,7 @@ void _ResourceLoader::_bind_methods() {
 
 
 	ObjectTypeDB::bind_method(_MD("load_interactive:ResourceInteractiveLoader","path","type_hint"),&_ResourceLoader::load_interactive,DEFVAL(""));
-	ObjectTypeDB::bind_method(_MD("load:Resource","path","type_hint"),&_ResourceLoader::load,DEFVAL(""));
+	ObjectTypeDB::bind_method(_MD("load:Resource","path","type_hint", "p_no_cache"),&_ResourceLoader::load,DEFVAL(""), DEFVAL(false));
 	ObjectTypeDB::bind_method(_MD("get_recognized_extensions_for_type","type"),&_ResourceLoader::get_recognized_extensions_for_type);
 	ObjectTypeDB::bind_method(_MD("set_abort_on_missing_resources","abort"),&_ResourceLoader::set_abort_on_missing_resources);
 	ObjectTypeDB::bind_method(_MD("get_dependencies"),&_ResourceLoader::get_dependencies);
@@ -314,6 +314,11 @@ void _OS::set_time_scale(float p_scale) {
 float _OS::get_time_scale() {
 
 	return OS::get_singleton()->get_time_scale();
+}
+
+bool _OS::is_ok_left_and_cancel_right() const {
+
+	return OS::get_singleton()->get_swap_ok_cancel();
 }
 
 /*
@@ -642,7 +647,7 @@ void _OS::_bind_methods() {
 
 	ObjectTypeDB::bind_method(_MD("has_touchscreen_ui_hint"),&_OS::has_touchscreen_ui_hint);
 
-
+	ObjectTypeDB::bind_method(_MD("set_window_title","title"),&_OS::set_window_title);
 
 	ObjectTypeDB::bind_method(_MD("set_low_processor_usage_mode","enable"),&_OS::set_low_processor_usage_mode);
 	ObjectTypeDB::bind_method(_MD("is_in_low_processor_usage_mode"),&_OS::is_in_low_processor_usage_mode);
@@ -698,6 +703,8 @@ void _OS::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("get_data_dir"),&_OS::get_data_dir);
 	ObjectTypeDB::bind_method(_MD("get_system_dir","dir"),&_OS::get_system_dir);
 	ObjectTypeDB::bind_method(_MD("get_unique_ID"),&_OS::get_unique_ID);
+
+	ObjectTypeDB::bind_method(_MD("is_ok_left_and_cancel_right"),&_OS::is_ok_left_and_cancel_right);
 
 	ObjectTypeDB::bind_method(_MD("get_frames_per_second"),&_OS::get_frames_per_second);
 
@@ -838,6 +845,12 @@ Variant _Geometry::segment_intersects_triangle( const Vector3& p_from, const Vec
 		return Variant();
 
 }
+
+bool _Geometry::point_is_inside_triangle(const Vector2& s, const Vector2& a, const Vector2& b, const Vector2& c) const {
+
+	return Geometry::is_point_in_triangle(s,a,b,c);
+}
+
 DVector<Vector3> _Geometry::segment_intersects_sphere( const Vector3& p_from, const Vector3& p_to, const Vector3& p_sphere_pos,real_t p_sphere_radius) {
 
 	DVector<Vector3> r;
@@ -938,6 +951,7 @@ void _Geometry::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("segment_intersects_sphere","from","to","spos","sradius"),&_Geometry::segment_intersects_sphere);
 	ObjectTypeDB::bind_method(_MD("segment_intersects_cylinder","from","to","height","radius"),&_Geometry::segment_intersects_cylinder);
 	ObjectTypeDB::bind_method(_MD("segment_intersects_convex","from","to","planes"),&_Geometry::segment_intersects_convex);
+	ObjectTypeDB::bind_method(_MD("point_is_inside_triangle","point","a","b","c"),&_Geometry::point_is_inside_triangle);
 
 	ObjectTypeDB::bind_method(_MD("triangulate_polygon","polygon"),&_Geometry::triangulate_polygon);
 
@@ -1121,6 +1135,7 @@ String _File::get_as_text() const {
 		text+=l+"\n";
 		l = get_line();
 	}
+	text+=l;
 
 	return text;
 

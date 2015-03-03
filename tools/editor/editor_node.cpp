@@ -75,6 +75,7 @@
 #include "plugins/tile_map_editor_plugin.h"
 #include "plugins/cube_grid_theme_editor_plugin.h"
 #include "plugins/shader_editor_plugin.h"
+#include "plugins/shader_graph_editor_plugin.h"
 #include "plugins/path_editor_plugin.h"
 #include "plugins/rich_text_editor_plugin.h"
 #include "plugins/collision_polygon_editor_plugin.h"
@@ -88,6 +89,8 @@
 #include "plugins/animation_player_editor_plugin.h"
 #include "plugins/baked_light_editor_plugin.h"
 #include "plugins/polygon_2d_editor_plugin.h"
+#include "plugins/navigation_polygon_editor_plugin.h"
+#include "plugins/light_occluder_2d_editor_plugin.h"
 // end
 #include "tools/editor/io_plugins/editor_texture_import_plugin.h"
 #include "tools/editor/io_plugins/editor_scene_import_plugin.h"
@@ -333,6 +336,19 @@ void EditorNode::_sources_changed(bool p_exist) {
 void EditorNode::_vp_resized() {
 
 
+}
+
+void EditorNode::_rebuild_import_menu()
+{
+	PopupMenu* p = import_menu->get_popup();
+	p->clear();
+	p->add_item("Sub-Scene", FILE_IMPORT_SUBSCENE);
+	p->add_separator();
+	for (int i = 0; i < editor_import_export->get_import_plugin_count(); i++) {
+		p->add_item(editor_import_export->get_import_plugin(i)->get_visible_name(), IMPORT_PLUGIN_BASE + i);
+	}
+	p->add_separator();
+	p->add_item("Re-Import..", SETTINGS_IMPORT);
 }
 
 void EditorNode::_node_renamed() {
@@ -977,6 +993,15 @@ void EditorNode::_dialog_action(String p_file) {
 			}
 
 		} break;
+
+		case FILE_SAVE_AND_RUN: {
+			if (file->get_mode()==FileDialog::MODE_SAVE_FILE) {
+
+				_save_scene(p_file);
+				_run(false);
+			}
+		} break;
+
 		case FILE_EXPORT_MESH_LIBRARY: {
 
 			Ref<MeshLibrary> ml;
@@ -1390,13 +1415,10 @@ void EditorNode::_run(bool p_current,const String& p_custom) {
 		}
 
 		if (scene->get_filename()=="") {
-
-
 			current_option=-1;
 			//accept->get_cancel()->hide();
-			accept->get_ok()->set_text("I see..");
-			accept->set_text("Scene has never been saved. Save before running!");
-			accept->popup_centered(Size2(300,70));;
+			/**/
+			_menu_option_confirm(FILE_SAVE_BEFORE_RUN, false);
 			return;
 
 		}
@@ -1661,6 +1683,18 @@ void EditorNode::_menu_option_confirm(int p_option,bool p_confirmed) {
 			file->popup_centered_ratio();
 			file->set_title("Save Scene As..");
 			
+		} break;
+
+		case FILE_SAVE_BEFORE_RUN: {
+			if (!p_confirmed) {
+				accept->get_ok()->set_text("Yes");
+				accept->set_text("This scene has never been saved. Save before running?");
+				accept->popup_centered(Size2(300, 70));
+				break;
+			}
+
+			_menu_option(FILE_SAVE_AS_SCENE);
+			_menu_option_confirm(FILE_SAVE_AND_RUN, true);
 		} break;
 
 		case FILE_DUMP_STRINGS: {
@@ -1948,6 +1982,25 @@ void EditorNode::_menu_option_confirm(int p_option,bool p_confirmed) {
 				log->add_message("REDO: "+action);
 
 		} break;
+
+		case EDIT_REVERT: {
+
+			Node *scene = get_edited_scene();
+
+			if (!scene)
+				break;
+			
+			if (unsaved_cache && !p_confirmed) {
+				confirmation->get_ok()->set_text("Revert");
+				confirmation->set_text("This action cannot be undone. Revert anyway?");
+				confirmation->popup_centered(Size2(300,70));
+				break;
+			}
+
+			Error err = load_scene(scene->get_filename());
+
+		} break;
+
 #if 0
 		case NODE_EXTERNAL_INSTANCE: {
 
@@ -2366,6 +2419,19 @@ void EditorNode::remove_editor_plugin(EditorPlugin *p_editor) {
 	singleton->remove_child(p_editor);
 	singleton->editor_data.remove_editor_plugin( p_editor );
 
+}
+
+
+void EditorNode::add_editor_import_plugin(const Ref<EditorImportPlugin>& p_editor_import) {
+
+	editor_import_export->add_import_plugin(p_editor_import);
+	_rebuild_import_menu();
+}
+
+void EditorNode::remove_editor_import_plugin(const Ref<EditorImportPlugin>& p_editor_import) {
+
+	editor_import_export->remove_import_plugin(p_editor_import);
+	_rebuild_import_menu();
 }
 
 
@@ -3133,6 +3199,9 @@ void EditorNode::_bind_methods() {
 	ObjectTypeDB::bind_method("_sources_changed",&EditorNode::_sources_changed);
 	ObjectTypeDB::bind_method("_fs_changed",&EditorNode::_fs_changed);
 
+	ObjectTypeDB::bind_method(_MD("add_editor_import_plugin", "plugin"), &EditorNode::add_editor_import_plugin);
+	ObjectTypeDB::bind_method(_MD("remove_editor_import_plugin", "plugin"), &EditorNode::remove_editor_import_plugin);
+	ObjectTypeDB::bind_method(_MD("get_gui_base"), &EditorNode::get_gui_base);
 
 	ADD_SIGNAL( MethodInfo("play_pressed") );
 	ADD_SIGNAL( MethodInfo("pause_pressed") );
@@ -3193,6 +3262,11 @@ Error EditorNode::export_platform(const String& p_platform, const String& p_path
 	return OK;
 }
 
+void EditorNode::show_warning(const String& p_text) {
+
+	warning->set_text(p_text);
+	warning->popup_centered_minsize();
+}
 
 
 EditorNode::EditorNode() {
@@ -3245,7 +3319,7 @@ EditorNode::EditorNode() {
 	gui_base->set_area_as_parent_rect();
 
 
-	Ref<Theme> theme( memnew( Theme ) );
+	theme = Ref<Theme>( memnew( Theme ) );
 	gui_base->set_theme( theme );
 	editor_register_icons(theme);
 	editor_register_fonts(theme);
@@ -3308,13 +3382,13 @@ EditorNode::EditorNode() {
 	main_editor_tabs->connect("tab_changed",this,"_editor_select");
 	HBoxContainer *srth = memnew( HBoxContainer );
 	srt->add_child( srth );
-	EmptyControl *tec = memnew( EmptyControl );
-	tec->set_minsize(Size2(100,0));
+	Control *tec = memnew( Control );
+	tec->set_custom_minimum_size(Size2(100,0));
 	tec->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	srth->add_child(tec);
 	srth->add_child(main_editor_tabs);
-	tec = memnew( EmptyControl );
-	tec->set_minsize(Size2(100,0));
+	tec = memnew( Control );
+	tec->set_custom_minimum_size(Size2(100,0));
 	srth->add_child(tec);
 	tec->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 
@@ -3450,6 +3524,8 @@ EditorNode::EditorNode() {
 	p->add_separator();
 	p->add_item("Project Settings",RUN_SETTINGS);
 	p->add_separator();
+	p->add_item("Revert Scene",EDIT_REVERT);
+	p->add_separator();
 	p->add_item("Quit to Project List",RUN_PROJECT_MANAGER,KEY_MASK_SHIFT+KEY_MASK_CMD+KEY_Q);
 	p->add_item("Quit",FILE_QUIT,KEY_MASK_CMD+KEY_Q);
 
@@ -3494,8 +3570,6 @@ EditorNode::EditorNode() {
 	left_menu_hb->add_child( import_menu );
 
 	p=import_menu->get_popup();
-	p->add_item("Sub-Scene",FILE_IMPORT_SUBSCENE);
-	p->add_separator();
 	p->connect("item_pressed",this,"_menu_option");
 
 	export_button = memnew( ToolButton );
@@ -3533,7 +3607,7 @@ EditorNode::EditorNode() {
 	play_button->set_icon(gui_base->get_icon("MainPlay","EditorIcons"));
 	play_button->set_focus_mode(Control::FOCUS_NONE);
 	play_button->connect("pressed", this,"_menu_option",make_binds(RUN_PLAY));
-	play_button->set_tooltip("Start the scene (F5).");
+	play_button->set_tooltip("Play the project (F5).");
 
 
 
@@ -3674,8 +3748,8 @@ EditorNode::EditorNode() {
 	top_pallete->add_child(resources_dock);
 	top_pallete->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 
-	EmptyControl *editor_spacer = memnew( EmptyControl );
-	editor_spacer->set_minsize(Size2(260,200));
+	Control *editor_spacer = memnew( Control );
+	editor_spacer->set_custom_minimum_size(Size2(260,200));
 	editor_spacer->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	editor_vsplit->add_child( editor_spacer );
 	editor_spacer->add_child( top_pallete );
@@ -3686,8 +3760,8 @@ EditorNode::EditorNode() {
 
 	prop_pallete->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 
-	editor_spacer = memnew( EmptyControl );
-	editor_spacer->set_minsize(Size2(260,200));
+	editor_spacer = memnew( Control );
+	editor_spacer->set_custom_minimum_size(Size2(260,200));
 	editor_spacer->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	editor_vsplit->add_child( editor_spacer );
 	editor_spacer->add_child( prop_pallete );
@@ -3903,6 +3977,8 @@ EditorNode::EditorNode() {
 	logo->set_pos(Point2(20,20));
 	logo->set_texture(gui_base->get_icon("Logo","EditorIcons") );
 
+	warning = memnew( AcceptDialog );
+	add_child(warning);
 
 
 
@@ -4004,11 +4080,6 @@ EditorNode::EditorNode() {
 	editor_import_export->add_import_plugin( Ref<EditorSampleImportPlugin>( memnew(EditorSampleImportPlugin(this))));
 	editor_import_export->add_import_plugin( Ref<EditorTranslationImportPlugin>( memnew(EditorTranslationImportPlugin(this))));
 
-
-	for(int i=0;i<editor_import_export->get_import_plugin_count();i++) {
-		    import_menu->get_popup()->add_item(editor_import_export->get_import_plugin(i)->get_visible_name(),IMPORT_PLUGIN_BASE+i);
-	}
-
 	editor_import_export->add_export_plugin( Ref<EditorTextureExportPlugin>( memnew(EditorTextureExportPlugin)));
 
 	add_editor_plugin( memnew( CanvasItemEditorPlugin(this) ) );
@@ -4016,7 +4087,10 @@ EditorNode::EditorNode() {
 	add_editor_plugin( memnew( ScriptEditorPlugin(this) ) );
 	add_editor_plugin( memnew( EditorHelpPlugin(this) ) );
 	add_editor_plugin( memnew( AnimationPlayerEditorPlugin(this) ) );
-	add_editor_plugin( memnew( ShaderEditorPlugin(this) ) );
+	add_editor_plugin( memnew( ShaderGraphEditorPlugin(this,true) ) );
+	add_editor_plugin( memnew( ShaderGraphEditorPlugin(this,false) ) );
+	add_editor_plugin( memnew( ShaderEditorPlugin(this,true) ) );
+	add_editor_plugin( memnew( ShaderEditorPlugin(this,false) ) );
 	add_editor_plugin( memnew( CameraEditorPlugin(this) ) );
 	add_editor_plugin( memnew( SampleEditorPlugin(this) ) );
 	add_editor_plugin( memnew( SampleLibraryEditorPlugin(this) ) );
@@ -4042,6 +4116,8 @@ EditorNode::EditorNode() {
 	add_editor_plugin( memnew( PathEditorPlugin(this) ) );
 	add_editor_plugin( memnew( BakedLightEditorPlugin(this) ) );
 	add_editor_plugin( memnew( Polygon2DEditorPlugin(this) ) );
+	add_editor_plugin( memnew( LightOccluder2DEditorPlugin(this) ) );
+	add_editor_plugin( memnew( NavigationPolygonEditorPlugin(this) ) );
 
 	for(int i=0;i<EditorPlugins::get_plugin_count();i++)
 		add_editor_plugin( EditorPlugins::create(i,this) );
@@ -4050,9 +4126,7 @@ EditorNode::EditorNode() {
 	circle_step_frame=OS::get_singleton()->get_frames_drawn();;
 	circle_step=0;
 
-
-	import_menu->get_popup()->add_separator();
-	import_menu->get_popup()->add_item("Re-Import..",SETTINGS_IMPORT);
+	_rebuild_import_menu();
 
 	editor_plugin_screen=NULL;
 	editor_plugin_over=NULL;
@@ -4067,9 +4141,9 @@ EditorNode::EditorNode() {
 
 	Globals::get_singleton()->set("debug/indicators_enabled",true);
 	Globals::get_singleton()->set("render/room_cull_enabled",false);
-	theme->set_color("prop_category","Editor",Color::hex(0x3f3945ff));
-	theme->set_color("prop_section","Editor",Color::hex(0x38323dff));
-	theme->set_color("prop_subsection","Editor",Color::hex(0x342e39ff));
+	theme->set_color("prop_category","Editor",Color::hex(0x403d41ff));
+	theme->set_color("prop_section","Editor",Color::hex(0x383539ff));
+	theme->set_color("prop_subsection","Editor",Color::hex(0x343135ff));
 	theme->set_color("fg_selected","Editor",Color::html("ffbd8e8e"));
 	theme->set_color("fg_error","Editor",Color::html("ffbd8e8e"));
 

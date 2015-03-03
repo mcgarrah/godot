@@ -292,7 +292,11 @@ Vector<StringName> EditorExportPlatform::get_dependencies(bool p_bundles) const 
 			_add_filter_to_list(exported,"*");
 		} else {
 			_add_to_list(EditorFileSystem::get_singleton()->get_filesystem(),exported);
-			_add_filter_to_list(exported,EditorImportExport::get_singleton()->get_export_custom_filter());
+			String cf = EditorImportExport::get_singleton()->get_export_custom_filter();
+			if (cf!="")
+				cf+=",";
+			cf+="*.flags";
+			_add_filter_to_list(exported,cf);
 
 		}
 
@@ -361,8 +365,12 @@ Vector<StringName> EditorExportPlatform::get_dependencies(bool p_bundles) const 
 				}
 			}
 		}
+		String cf = EditorImportExport::get_singleton()->get_export_custom_filter();
+		if (cf!="")
+			cf+=",";
+		cf+="*.flags";
+		_add_filter_to_list(exported,cf);
 
-		_add_filter_to_list(exported,EditorImportExport::get_singleton()->get_export_custom_filter());
 
 	}
 
@@ -896,6 +904,16 @@ Error EditorExportPlatform::export_project_files(EditorExportSaveFunction p_func
 	return OK;
 }
 
+static int _get_pad(int p_alignment, int p_n) {
+
+	int rest = p_n % p_alignment;
+	int pad = 0;
+	if (rest > 0) {
+		pad = p_alignment - rest;
+	};
+
+	return pad;
+};
 
 Error EditorExportPlatform::save_pack_file(void *p_userdata,const String& p_path, const Vector<uint8_t>& p_data,int p_file,int p_total) {
 
@@ -922,11 +940,19 @@ Error EditorExportPlatform::save_pack_file(void *p_userdata,const String& p_path
 	pd->ep->step("Storing File: "+p_path,2+p_file*100/p_total);
 	pd->count++;
 	pd->ftmp->store_buffer(p_data.ptr(),p_data.size());
+	if (pd->alignment > 1) {
+
+		int pad = _get_pad(pd->alignment, pd->ftmp->get_pos());
+		for (int i=0; i<pad; i++) {
+
+			pd->ftmp->store_8(0);
+		};
+	};
 	return OK;
 
 }
 
-Error EditorExportPlatform::save_pack(FileAccess *dst,bool p_make_bundles) {
+Error EditorExportPlatform::save_pack(FileAccess *dst,bool p_make_bundles, int p_alignment) {
 
 	EditorProgress ep("savepack","Packing",102);
 
@@ -944,7 +970,6 @@ Error EditorExportPlatform::save_pack(FileAccess *dst,bool p_make_bundles) {
 		dst->store_32(0);
 	}
 
-
 	size_t fcountpos = dst->get_pos();
 	dst->store_32(0);
 
@@ -953,10 +978,19 @@ Error EditorExportPlatform::save_pack(FileAccess *dst,bool p_make_bundles) {
 	pd.f=dst;
 	pd.ftmp=tmp;
 	pd.count=0;
+	pd.alignment = p_alignment;
 	Error err = export_project_files(save_pack_file,&pd,p_make_bundles);
 	memdelete(tmp);
 	if (err)
 		return err;
+
+	if (p_alignment > 1) {
+		int pad = _get_pad(p_alignment, dst->get_pos());
+		for (int i=0; i<pad; i++) {
+
+			dst->store_8(0);
+		};
+	};
 
 	size_t ofsplus = dst->get_pos();
 	//append file
@@ -1133,8 +1167,34 @@ EditorImportExport* EditorImportExport::singleton=NULL;
 
 void EditorImportExport::add_import_plugin(const Ref<EditorImportPlugin>& p_plugin) {
 
+	// Need to make sure the name is unique if we are going to lookup by it
+	ERR_FAIL_COND(by_idx.has(p_plugin->get_name()));
+
 	by_idx[ p_plugin->get_name() ]=plugins.size();
 	plugins.push_back(p_plugin);
+}
+
+void EditorImportExport::remove_import_plugin(const Ref<EditorImportPlugin>& p_plugin) {
+
+	String plugin_name = p_plugin->get_name();
+
+	// Keep the indices the same
+	// Find the index of the target plugin
+	ERR_FAIL_COND(!by_idx.has(plugin_name));
+	int idx = by_idx[plugin_name];
+	int last_idx = plugins.size() - 1;
+
+	// Swap the last plugin and the target one
+	SWAP(plugins[idx], plugins[last_idx]);
+
+	// Update the index of the old last one
+	by_idx[plugins[idx]->get_name()] = idx;
+
+	// Remove the target plugin's by_idx entry
+	by_idx.erase(plugin_name);
+
+	// Erase the plugin
+	plugins.remove(last_idx);
 }
 
 int EditorImportExport::get_import_plugin_count() const{

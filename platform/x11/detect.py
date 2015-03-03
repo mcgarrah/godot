@@ -47,6 +47,7 @@ def get_opts():
 	return [
 	('use_llvm','Use llvm compiler','no'),
 	('use_sanitizer','Use llvm compiler sanitize address','no'),
+	('pulseaudio','Detect & Use pulseaudio','yes'),
 	]
   
 def get_flags():
@@ -69,21 +70,23 @@ def configure(env):
 		else:
 			env["bits"]="32"
 
-
 	env.Append(CPPPATH=['#platform/x11'])
 	if (env["use_llvm"]=="yes"):
-		env["CC"]="clang"
-		env["CXX"]="clang++"
-		env["LD"]="clang++"
-		if (env["use_sanitizer"]=="yes"):
-			env.Append(CXXFLAGS=['-fsanitize=address','-fno-omit-frame-pointer'])
-			env.Append(LINKFLAGS=['-fsanitize=address'])
-			env.extra_suffix=".llvms"
-		else:
-			env.extra_suffix=".llvm"
+		if 'clang++' not in env['CXX']:
+			env["CC"]="clang"
+			env["CXX"]="clang++"
+			env["LD"]="clang++"
+		env.Append(CPPFLAGS=['-DTYPED_METHOD_BIND'])
+		env.extra_suffix=".llvm"
 
+		if (env["colored"]=="yes"):
+			if sys.stdout.isatty():
+				env.Append(CXXFLAGS=["-fcolor-diagnostics"])
 
-
+	if (env["use_sanitizer"]=="yes"):
+		env.Append(CXXFLAGS=['-fsanitize=address','-fno-omit-frame-pointer'])
+		env.Append(LINKFLAGS=['-fsanitize=address'])
+		env.extra_suffix+="s"
 
 	#if (env["tools"]=="no"):
 	#	#no tools suffix
@@ -114,7 +117,16 @@ def configure(env):
 	
 	env.Append(CPPFLAGS=['-DOPENGL_ENABLED','-DGLEW_ENABLED'])
 	env.Append(CPPFLAGS=["-DALSA_ENABLED"])
-	env.Append(CPPFLAGS=['-DX11_ENABLED','-DUNIX_ENABLED','-DGLES2_ENABLED','-DGLES1_ENABLED','-DGLES_OVER_GL'])
+
+	if (env["pulseaudio"]=="yes"):
+		if not os.system("pkg-config --exists libpulse-simple"):
+			print("Enabling PulseAudio")
+			env.Append(CPPFLAGS=["-DPULSEAUDIO_ENABLED"])
+			env.ParseConfig('pkg-config --cflags --libs libpulse-simple')
+		else:
+			print("PulseAudio development libraries not found, disabling driver")
+
+	env.Append(CPPFLAGS=['-DX11_ENABLED','-DUNIX_ENABLED','-DGLES2_ENABLED','-DGLES_OVER_GL'])
 	env.Append(LIBS=['GL', 'GLU', 'pthread','asound','z']) #TODO detect linux/BSD!
 	#env.Append(CPPFLAGS=['-DMPC_FIXED_POINT'])
 
@@ -127,11 +139,6 @@ def configure(env):
 		env.Append(CPPFLAGS=['-m64'])
 		env.Append(LINKFLAGS=['-m64','-L/usr/lib/i686-linux-gnu'])
 
-
-	if (env["CXX"]=="clang++"):
-		env.Append(CPPFLAGS=['-DTYPED_METHOD_BIND'])
-		env["CC"]="clang"
-		env["LD"]="clang++"
 
 	import methods
 

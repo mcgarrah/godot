@@ -21,7 +21,7 @@ public:
 
 	static _ResourceLoader *get_singleton() { return singleton; }
 	Ref<ResourceInteractiveLoader> load_interactive(const String& p_path,const String& p_type_hint="");
-	RES load(const String &p_path,const String& p_type_hint="");
+	RES load(const String &p_path,const String& p_type_hint="", bool p_no_cache = false);
 	DVector<String> get_recognized_extensions_for_type(const String& p_type);
 	void set_abort_on_missing_resources(bool p_abort);
 	StringArray get_dependencies(const String& p_path);
@@ -220,6 +220,8 @@ public:
 	void set_time_scale(float p_scale);
 	float get_time_scale();
 
+	bool is_ok_left_and_cancel_right() const;
+
 	static _OS *get_singleton() { return singleton; }
 
 	_OS();
@@ -248,6 +250,8 @@ public:
 	Vector3 get_closest_point_to_segment(const Vector3& p_point, const Vector3& p_a,const Vector3& p_b);
 	Variant ray_intersects_triangle( const Vector3& p_from, const Vector3& p_dir, const Vector3& p_v0,const Vector3& p_v1,const Vector3& p_v2);
 	Variant segment_intersects_triangle( const Vector3& p_from, const Vector3& p_to, const Vector3& p_v0,const Vector3& p_v1,const Vector3& p_v2);
+	bool point_is_inside_triangle(const Vector2& s, const Vector2& a, const Vector2& b, const Vector2& c) const;
+
 	DVector<Vector3> segment_intersects_sphere( const Vector3& p_from, const Vector3& p_to, const Vector3& p_sphere_pos,real_t p_sphere_radius);
 	DVector<Vector3> segment_intersects_cylinder( const Vector3& p_from, const Vector3& p_to, float p_height,float p_radius);
 	DVector<Vector3> segment_intersects_convex(const Vector3& p_from, const Vector3& p_to,const Vector<Plane>& p_planes);

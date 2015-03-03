@@ -39,7 +39,6 @@
 #include "scene/main/viewport.h"
 #include "scene/gui/control.h"
 #include "scene/gui/texture_progress.h"
-#include "scene/gui/empty_control.h"
 #include "scene/gui/button.h"
 #include "scene/gui/button_array.h"
 #include "scene/gui/button_group.h"
@@ -75,9 +74,13 @@
 #include "scene/gui/split_container.h"
 #include "scene/gui/video_player.h"
 #include "scene/gui/reference_frame.h"
+#include "scene/gui/graph_node.h"
+#include "scene/gui/graph_edit.h"
 #include "scene/resources/video_stream.h"
 #include "scene/2d/particles_2d.h"
 #include "scene/2d/path_2d.h"
+#include "scene/2d/light_2d.h"
+#include "scene/2d/light_occluder_2d.h"
 
 #include "scene/2d/canvas_item.h"
 #include "scene/2d/sprite.h"
@@ -101,6 +104,8 @@
 #include "scene/2d/screen_button.h"
 #include "scene/2d/remote_transform_2d.h"
 #include "scene/2d/y_sort.h"
+#include "scene/2d/navigation2d.h"
+#include "scene/2d/canvas_modulate.h"
 
 #include "scene/2d/position_2d.h"
 #include "scene/2d/tile_map.h"
@@ -151,6 +156,8 @@
 #include "scene/resources/material.h"
 #include "scene/resources/mesh.h"
 #include "scene/resources/room.h"
+
+#include "scene/resources/shader_graph.h"
 
 #include "scene/resources/world.h"
 #include "scene/resources/world_2d.h"
@@ -259,6 +266,7 @@ void register_scene_types() {
 	ObjectTypeDB::register_virtual_type<RenderTargetTexture>();
 	ObjectTypeDB::register_type<Timer>();
 	ObjectTypeDB::register_type<CanvasLayer>();
+	ObjectTypeDB::register_type<CanvasModulate>();
 	ObjectTypeDB::register_type<ResourcePreloader>();
 
 	/* REGISTER GUI */
@@ -268,7 +276,8 @@ void register_scene_types() {
 	OS::get_singleton()->yield(); //may take time to init
 
 	ObjectTypeDB::register_type<Control>();
-	ObjectTypeDB::register_type<EmptyControl>();
+//	ObjectTypeDB::register_type<EmptyControl>();
+	ObjectTypeDB::add_compatibility_type("EmptyControl","Control");
 	ObjectTypeDB::register_type<Button>();
 	ObjectTypeDB::register_type<Label>();
 	ObjectTypeDB::register_type<HScrollBar>();
@@ -303,6 +312,8 @@ void register_scene_types() {
 	ObjectTypeDB::register_virtual_type<SplitContainer>();
 	ObjectTypeDB::register_type<HSplitContainer>();
 	ObjectTypeDB::register_type<VSplitContainer>();
+	ObjectTypeDB::register_type<GraphNode>();
+	ObjectTypeDB::register_type<GraphEdit>();
 
 	OS::get_singleton()->yield(); //may take time to init
 
@@ -444,6 +455,7 @@ void register_scene_types() {
 	//ObjectTypeDB::set_type_enabled("BodyVolumeCylinder",false);
 	//ObjectTypeDB::set_type_enabled("BodyVolumeConvexPolygon",false);
 
+	ObjectTypeDB::register_type<CanvasItemMaterial>();
 	ObjectTypeDB::register_virtual_type<CanvasItem>();
 	ObjectTypeDB::register_type<Node2D>();
 	ObjectTypeDB::register_type<Particles2D>();
@@ -465,6 +477,9 @@ void register_scene_types() {
 	ObjectTypeDB::register_type<VisibilityNotifier2D>();
 	ObjectTypeDB::register_type<VisibilityEnabler2D>();
 	ObjectTypeDB::register_type<Polygon2D>();
+	ObjectTypeDB::register_type<Light2D>();
+	ObjectTypeDB::register_type<LightOccluder2D>();
+	ObjectTypeDB::register_type<OccluderPolygon2D>();
 	ObjectTypeDB::register_type<YSort>();
 
 	ObjectTypeDB::set_type_enabled("CollisionShape2D",false);
@@ -490,15 +505,22 @@ void register_scene_types() {
 
 	/* REGISTER RESOURCES */
 
+	ObjectTypeDB::register_virtual_type<Shader>();
+	ObjectTypeDB::register_virtual_type<ShaderGraph>();
+	ObjectTypeDB::register_type<CanvasItemShader>();
+	ObjectTypeDB::register_type<CanvasItemShaderGraph>();
+
 #ifndef _3D_DISABLED
 	ObjectTypeDB::register_type<Mesh>();
 	ObjectTypeDB::register_virtual_type<Material>();
 	ObjectTypeDB::register_type<FixedMaterial>();
-	ObjectTypeDB::register_type<ParticleSystemMaterial>();
-	ObjectTypeDB::register_type<UnshadedMaterial>();
 	ObjectTypeDB::register_type<ShaderMaterial>();
 	ObjectTypeDB::register_type<RoomBounds>();
-	ObjectTypeDB::register_type<Shader>();
+	ObjectTypeDB::register_type<MaterialShaderGraph>();
+	ObjectTypeDB::register_type<MaterialShader>();
+	ObjectTypeDB::add_compatibility_type("Shader","MaterialShader");
+	ObjectTypeDB::add_compatibility_type("ParticleSystemMaterial","FixedMaterial");
+	ObjectTypeDB::add_compatibility_type("UnshadedMaterial","FixedMaterial");
 	ObjectTypeDB::register_type<MultiMesh>();
 	ObjectTypeDB::register_type<MeshLibrary>();
 
@@ -561,6 +583,10 @@ void register_scene_types() {
 	ObjectTypeDB::register_type<Curve2D>();
 	ObjectTypeDB::register_type<Path2D>();
 	ObjectTypeDB::register_type<PathFollow2D>();
+
+	ObjectTypeDB::register_type<Navigation2D>();
+	ObjectTypeDB::register_type<NavigationPolygon>();
+	ObjectTypeDB::register_type<NavigationPolygonInstance>();
 
 	OS::get_singleton()->yield(); //may take time to init
 

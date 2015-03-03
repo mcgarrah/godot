@@ -188,7 +188,7 @@ void ScriptTextEditor::apply_code() {
 
 	if (script.is_null())
 		return;
-	print_line("applying code");
+//	print_line("applying code");
 	script->set_source_code(get_text_edit()->get_text());
 	script->update_exports();
 }
@@ -210,6 +210,7 @@ void ScriptTextEditor::_load_theme_settings() {
 	get_text_edit()->add_color_override("font_selected_color",EDITOR_DEF("text_editor/text_selected_color",Color(1,1,1)));
 	get_text_edit()->add_color_override("selection_color",EDITOR_DEF("text_editor/selection_color",Color(0.2,0.2,1)));
 	get_text_edit()->add_color_override("brace_mismatch_color",EDITOR_DEF("text_editor/brace_mismatch_color",Color(1,0.2,0.2)));
+	get_text_edit()->add_color_override("current_line_color",EDITOR_DEF("text_editor/current_line_color",Color(0.3,0.5,0.8,0.15)));
 
 	Color keyword_color= EDITOR_DEF("text_editor/keyword_color",Color(0.5,0.0,0.2));
 
@@ -630,7 +631,10 @@ bool ScriptEditor::_test_script_times_on_disk() {
 
 
 	if (!all_ok)
-		disk_changed->call_deferred("popup_centered_ratio",0.5);
+		if (bool(EDITOR_DEF("text_editor/auto_reload_changed_scripts",false)))
+			script_editor->_reload_scripts();
+		else
+			disk_changed->call_deferred("popup_centered_ratio",0.5);
 
 	return all_ok;
 }
@@ -1033,9 +1037,12 @@ void ScriptEditor::_menu_option(int p_option) {
 				editor->emit_signal("request_help", text);
 		} break;
 		case WINDOW_CLOSE: {
-
-			erase_tab_confirm->set_text("Close Tab?:\n\""+current->get_name()+"\"");
-			erase_tab_confirm->popup_centered(Point2(250,80));
+			if (current->get_text_edit()->get_version()!=current->get_text_edit()->get_saved_version()) {
+				erase_tab_confirm->set_text("Close and save changes?\n\""+current->get_name()+"\"");
+				erase_tab_confirm->popup_centered(Point2(250,80));
+			} else {
+				_close_current_tab();
+			}
 		} break;
 		case WINDOW_MOVE_LEFT: {
 
@@ -1578,7 +1585,7 @@ ScriptEditor::ScriptEditor(EditorNode *p_editor) {
 	menu_hb->add_child(file_menu);
 	file_menu->set_text("File");
 	file_menu->get_popup()->add_item("Open",FILE_OPEN);
-	file_menu->get_popup()->add_item("Save",FILE_SAVE,KEY_MASK_ALT|KEY_S);
+	file_menu->get_popup()->add_item("Save",FILE_SAVE,KEY_MASK_ALT|KEY_MASK_CMD|KEY_S);
 	file_menu->get_popup()->add_item("Save As..",FILE_SAVE_AS);
 	file_menu->get_popup()->add_item("Save All",FILE_SAVE_ALL,KEY_MASK_CMD|KEY_MASK_SHIFT|KEY_S);
 	file_menu->get_popup()->connect("item_pressed", this,"_menu_option");
@@ -1602,7 +1609,11 @@ ScriptEditor::ScriptEditor(EditorNode *p_editor) {
 	edit_menu->get_popup()->add_item("Toggle Comment",EDIT_TOGGLE_COMMENT,KEY_MASK_CMD|KEY_K);
 	edit_menu->get_popup()->add_item("Clone Down",EDIT_CLONE_DOWN,KEY_MASK_CMD|KEY_B);
 	edit_menu->get_popup()->add_separator();
+#ifdef OSX_ENABLED
+	edit_menu->get_popup()->add_item("Complete Symbol",EDIT_COMPLETE,KEY_MASK_CTRL|KEY_SPACE);
+#else
 	edit_menu->get_popup()->add_item("Complete Symbol",EDIT_COMPLETE,KEY_MASK_CMD|KEY_SPACE);
+#endif
 	edit_menu->get_popup()->add_item("Auto Indent",EDIT_AUTO_INDENT,KEY_MASK_CMD|KEY_I);
 	edit_menu->get_popup()->connect("item_pressed", this,"_menu_option");
 
@@ -1798,6 +1809,7 @@ ScriptEditorPlugin::ScriptEditorPlugin(EditorNode *p_node) {
 
 	script_editor->hide();
 
+	EDITOR_DEF("text_editor/auto_reload_changed_scripts",false);
 	EDITOR_DEF("external_editor/use_external_editor",false);
 	EDITOR_DEF("external_editor/exec_path","");
 	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::STRING,"external_editor/exec_path",PROPERTY_HINT_GLOBAL_FILE));

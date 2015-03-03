@@ -41,6 +41,7 @@ SceneStringNames::SceneStringNames() {
 	visibility_changed=StaticCString::create("visibility_changed");
 	input_event=StaticCString::create("input_event");
 	shader_shader=StaticCString::create("shader/shader");
+	shader_unshaded=StaticCString::create("shader/unshaded");
 	enter_tree=StaticCString::create("enter_tree");
 	exit_tree=StaticCString::create("exit_tree");
 	item_rect_changed=StaticCString::create("item_rect_changed");
@@ -67,6 +68,7 @@ SceneStringNames::SceneStringNames() {
 	idle=StaticCString::create("idle");
 	iteration=StaticCString::create("iteration");
 	update=StaticCString::create("update");
+	updated=StaticCString::create("updated");
 
 	_get_gizmo_geometry=StaticCString::create("_get_gizmo_geometry");
 	_can_gizmo_scale=StaticCString::create("_can_gizmo_scale");

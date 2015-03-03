@@ -94,8 +94,6 @@ def strarr(arr):
 	s+=" "
 	return s
 
-
-
 class DaeExporter:
 
 	def validate_id(self,d):
@@ -132,10 +130,10 @@ class DaeExporter:
 				tup = tup + (self.tangent.x,self.tangent.y,self.tangent.z)
 			if (self.bitangent!=None):
 				tup = tup + (self.bitangent.x,self.bitangent.y,self.bitangent.z)
-			#for t in self.bones:
-			#	tup = tup + (t)
-			#for t in self.weights:
-			#	tup = tup + (t)
+			for t in self.bones:
+				tup = tup + (float(t),)
+			for t in self.weights:
+				tup = tup + (float(t),)
 
 			return tup
 
@@ -162,37 +160,61 @@ class DaeExporter:
 
 
 	def export_image(self,image):
-
 		if (image in self.image_cache):
 			return self.image_cache[image]
-
+			
 		imgpath = image.filepath
 		if (imgpath.find("//")==0 or imgpath.find("\\\\")==0):
 			#if relative, convert to absolute
 			imgpath = bpy.path.abspath(imgpath)
 
 		#path is absolute, now do something!
-
+		
 		if (self.config["use_copy_images"]):
 			#copy image
 			basedir = os.path.dirname(self.path)+"/images"
 			if (not os.path.isdir(basedir)):
 				os.makedirs(basedir)
-			dstfile=basedir+"/"+os.path.basename(imgpath)
-			if (not os.path.isfile(dstfile)):
-				shutil.copy(imgpath,dstfile)
-			imgpath="images/"+os.path.basename(imgpath)
+			
+			if os.path.isfile(imgpath):
+				dstfile=basedir+"/"+os.path.basename(imgpath)
+				
+				if (not os.path.isfile(dstfile)):
+					shutil.copy(imgpath,dstfile)
+					imgpath="images/"+os.path.basename(imgpath)
+			else:
+				### if file is not found save it as png file in the destination folder
+				img_tmp_path = image.filepath	
+				if img_tmp_path.endswith((".bmp",".rgb",".png",".jpeg",".jpg",".jp2",".tga",".cin",".dpx",".exr",".hdr",".tif")):
+					image.filepath = basedir+"/"+os.path.basename(img_tmp_path)
+				else:	
+					image.filepath = basedir+"/"+image.name+".png"
+					
+				dstfile=basedir+"/"+os.path.basename(image.filepath)
+				
+				if (not os.path.isfile(dstfile)):
+					
+					image.save()
+					imgpath="images/"+os.path.basename(image.filepath)
+				image.filepath = img_tmp_path
 
 		else:
 			#export relative, always, no one wants absolute paths.
 			try:
 				imgpath = os.path.relpath(imgpath,os.path.dirname(self.path)).replace("\\","/") # export unix compatible always
+				
 			except:
 				pass #fails sometimes, not sure why
-
-
+		
 
 		imgid = self.new_id("image")
+		
+		if (not os.path.isfile(imgpath)):
+			if imgpath.endswith((".bmp",".rgb",".png",".jpeg",".jpg",".jp2",".tga",".cin",".dpx",".exr",".hdr",".tif")):
+				imgpath="images/"+os.path.basename(imgpath)
+			else:
+				imgpath="images/"+image.name+".png"
+		
 		self.writel(S_IMGS,1,'<image id="'+imgid+'" name="'+image.name+'">')
 		self.writel(S_IMGS,2,'<init_from>'+imgpath+'</init_from>"/>')
 		self.writel(S_IMGS,1,'</image>')
@@ -488,12 +510,12 @@ class DaeExporter:
 		mat_assign=[]
 
 		uv_layer_count=len(mesh.uv_textures)
-		if (len(mesh.uv_textures)):
+		if (has_tangents and len(mesh.uv_textures)):
 			try:
 				mesh.calc_tangents()
 			except:
-				print("Warning, blender API is fucked up, not exporting UVs for this object.")
-				uv_layer_count=0
+				self.operator.report({'WARNING'},'CalcTangets failed for mesh "'+mesh.name+'", no tangets will be exported.')
+				#uv_layer_count=0
 				mesh.calc_normals_split()
 				has_tangents=False
 
@@ -567,16 +589,30 @@ class DaeExporter:
 
 				if (armature!=None):
 					wsum=0.0
+					zero_bones=[]
+
 					for vg in mv.groups:
 						if vg.group >= len(node.vertex_groups):
 							continue;
 						name = node.vertex_groups[vg.group].name
+
 						if (name in si["bone_index"]):
 							#could still put the weight as 0.0001 maybe
 							if (vg.weight>0.001): #blender has a lot of zero weight stuff
 								v.bones.append(si["bone_index"][name])
 								v.weights.append(vg.weight)
 								wsum+=vg.weight
+					if (wsum==0.0):
+						if not self.wrongvtx_report:
+							self.operator.report({'WARNING'},'Mesh for object "'+node.name+'" has unassigned weights. This may look wrong in exported model.')
+							self.wrongvtx_report=True
+
+						#blender can have bones assigned that weight zero so they remain local
+						#this is the best it can be done?
+						v.bones.append(0)
+						v.weights.append(1)
+
+
 
 
 				tup = v.get_tup()
@@ -865,6 +901,15 @@ class DaeExporter:
 		if (node.parent!=None):
 			if (node.parent.type=="ARMATURE"):
 				armature=node.parent
+			armcount=0
+			for n in node.modifiers:
+				if (n.type=="ARMATURE"):
+					armcount+=1
+			if (armcount>1):
+				self.operator.report({'WARNING'},'Object "'+node.name+'" refers to more than one armature! This is unsopported.')
+
+
+
 
 		if (node.data.shape_keys!=None):
 				sk = node.data.shape_keys
@@ -916,6 +961,12 @@ class DaeExporter:
 		boneidx = si["bone_count"]
 		si["bone_count"]+=1
 		bonesid = si["id"]+"-"+str(boneidx)
+		if (bone.name in self.used_bones):
+			if (self.config["use_anim_action_all"]):
+				self.operator.report({'WARNING'},'Bone name "'+bone.name+'" used in more than one skeleton. Actions might export wrong.')
+		else:
+			self.used_bones.append(bone.name)
+
 		si["bone_index"][bone.name]=boneidx
 		si["bone_ids"][bone]=boneid
 		si["bone_names"].append(bonesid)
@@ -978,12 +1029,12 @@ class DaeExporter:
 			self.writel(S_CAMS,5,'<zfar> '+str(camera.clip_end)+' </zfar>')
 			self.writel(S_CAMS,4,'</perspective>')
 		else:
-			self.writel(S_CAMS,4,'<orthografic>')
-			self.writel(S_CAMS,5,'<xmag> '+str(camera.ortho_scale)+' </xmag>') # I think?
+			self.writel(S_CAMS,4,'<orthographic>')
+			self.writel(S_CAMS,5,'<xmag> '+str(camera.ortho_scale*0.5)+' </xmag>') # I think?
 			self.writel(S_CAMS,5,'<aspect_ratio> '+str(self.scene.render.resolution_x / self.scene.render.resolution_y)+' </aspect_ratio>')
 			self.writel(S_CAMS,5,'<znear> '+str(camera.clip_start)+' </znear>')
 			self.writel(S_CAMS,5,'<zfar> '+str(camera.clip_end)+' </zfar>')
-			self.writel(S_CAMS,4,'</orthografic>')
+			self.writel(S_CAMS,4,'</orthographic>')
 
 		self.writel(S_CAMS,3,'</technique_common>')
 		self.writel(S_CAMS,2,'</optics>')
@@ -1176,6 +1227,7 @@ class DaeExporter:
 	def export_node(self,node,il):
 		if (not node in self.valid_nodes):
 			return
+		prev_node = bpy.context.scene.objects.active
 		bpy.context.scene.objects.active = node
 
 		self.writel(S_NODES,il,'<node id="'+self.validate_id(node.name)+'" name="'+node.name+'" type="NODE">')
@@ -1199,6 +1251,7 @@ class DaeExporter:
 
 		il-=1
 		self.writel(S_NODES,il,'</node>')
+		bpy.context.scene.objects.active = prev_node #make previous node active again
 
 	def is_node_valid(self,node):
 		if (not node.type in self.config["object_types"]):
@@ -1441,12 +1494,13 @@ class DaeExporter:
 		return tcn
 
 	def export_animations(self):
-		tmp_mat = []												# workaround by ndee					
-		for s in self.skeletons:									# workaround by ndee
-			tmp_bone_mat = []										# workaround by ndee
-			for bone in s.pose.bones:								# workaround by ndee
-				tmp_bone_mat.append(Matrix(bone.matrix_basis))		# workaround by ndee
-			tmp_mat.append([Matrix(s.matrix_local),tmp_bone_mat])	# workaround by ndee -> stores skeleton and bone transformations
+		tmp_mat = []
+		for s in self.skeletons:
+			tmp_bone_mat = []
+			for bone in s.pose.bones:
+				tmp_bone_mat.append(Matrix(bone.matrix_basis))
+				bone.matrix_basis = Matrix()
+			tmp_mat.append([Matrix(s.matrix_local),tmp_bone_mat])
 			
 		self.writel(S_ANIM,0,'<library_animations>')
 
@@ -1481,7 +1535,7 @@ class DaeExporter:
 								bones.append(dp)
 
 				allowed_skeletons=[]
-				for i,y in enumerate(self.skeletons):				# workaround by ndee
+				for i,y in enumerate(self.skeletons):
 					if (y.animation_data):
 						for z in y.pose.bones:
 							if (z.bone.name in bones):
@@ -1489,9 +1543,9 @@ class DaeExporter:
 									allowed_skeletons.append(y)
 						y.animation_data.action=x;
 						
-						y.matrix_local = tmp_mat[i][0]				# workaround by ndee -> resets the skeleton transformation. 
-						for j,bone in enumerate(s.pose.bones):		# workaround by ndee
-							bone.matrix_basis = Matrix()			# workaround by ndee -> resets the bone transformations. Important if bones in follwing actions miss keyframes
+						y.matrix_local = tmp_mat[i][0]
+						for j,bone in enumerate(s.pose.bones):
+							bone.matrix_basis = Matrix()
 							
 
 				print("allowed skeletons "+str(allowed_skeletons))
@@ -1507,19 +1561,24 @@ class DaeExporter:
 				for z in tcn:
 					self.writel(S_ANIM_CLIPS,2,'<instance_animation url="#'+z+'"/>')
 				self.writel(S_ANIM_CLIPS,1,'</animation_clip>')
+				if (len(tcn)==0):
+					self.operator.report({'WARNING'},'Animation clip "'+x.name+'" contains no tracks.')
+
 
 
 			self.writel(S_ANIM_CLIPS,0,'</library_animation_clips>')
 
-			for i,s in enumerate(self.skeletons):					# workaround by ndee
+
+			for i,s in enumerate(self.skeletons):
 				if (s.animation_data==None):
 					continue
 				if s in cached_actions:
 					s.animation_data.action = bpy.data.actions[cached_actions[s]]
 				else:
 					s.animation_data.action = None
-					for j,bone in enumerate(s.pose.bones):			# workaround by ndee
-						bone.matrix_basis = tmp_mat[i][1][j]		# workaround by ndee  -> resets the bone transformation to what they were before exporting.
+					for j,bone in enumerate(s.pose.bones):
+						bone.matrix_basis = tmp_mat[i][1][j]
+
 		else:
 			self.export_animation(self.scene.frame_start,self.scene.frame_end)
 		
@@ -1590,7 +1649,8 @@ class DaeExporter:
 		f.write(bytes('</COLLADA>\n',"UTF-8"))
 		return True
 
-	def __init__(self,path,kwargs):
+	def __init__(self,path,kwargs,operator):
+		self.operator=operator
 		self.scene=bpy.context.scene
 		self.last_id=0
 		self.scene_name=self.new_id("scene")
@@ -1604,6 +1664,10 @@ class DaeExporter:
 		self.config=kwargs
 		self.valid_nodes=[]
 		self.armature_for_morph={}
+		self.used_bones=[]
+		self.wrongvtx_report=False		
+
+
 
 
 
@@ -1615,8 +1679,10 @@ def save(operator, context,
 	**kwargs
 	):
 
-	exp = DaeExporter(filepath,kwargs)
+	exp = DaeExporter(filepath,kwargs,operator)
 	exp.export()
+
+
 
 	return {'FINISHED'}  # so the script wont run after we have batch exported.
 

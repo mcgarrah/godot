@@ -820,7 +820,7 @@ Variant GDFunction::call(GDInstance *p_instance, const Variant **p_args, int p_a
 				gdfs->state.stack.resize(alloca_size);
 				//copy variant stack
 				for(int i=0;i<_stack_size;i++) {
-					memnew_placement(&stack[sizeof(Variant)*i],Variant(stack[i]));
+					memnew_placement(&gdfs->state.stack[sizeof(Variant)*i],Variant(stack[i]));
 				}
 				gdfs->state.stack_size=_stack_size;
 				gdfs->state.self=self;
@@ -1756,6 +1756,7 @@ bool GDScript::_update_exports() {
 	return changed;
 
 #endif
+	return false;
 }
 
 void GDScript::update_exports() {
@@ -2695,7 +2696,10 @@ Error ResourceFormatSaverGDScript::save(const String &p_path,const RES& p_resour
 	}
 
 	file->store_string(source);
-
+	if (file->get_error()!=OK && file->get_error()!=ERR_FILE_EOF) {
+		memdelete(file);
+		return ERR_CANT_CREATE;
+	}
 	file->close();
 	memdelete(file);
 	return OK;

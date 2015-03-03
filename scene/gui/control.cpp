@@ -1126,6 +1126,7 @@ void Control::_window_input_event(InputEvent p_event) {
 				over = _find_control_at_pos(this,pos,parent_xform,window->focus_inv_xform);
 			}
 
+
 			if (window->drag_data.get_type()==Variant::NIL && over && !window->modal_stack.empty()) {
 
 				Control *top = window->modal_stack.back()->get();
@@ -2266,7 +2267,10 @@ void Control::_window_sort_subwindows() {
 	if (!window->subwindow_order_dirty)
 		return;
 
+
 	window->modal_stack.sort_custom<CComparator>();
+	window->subwindows.sort_custom<CComparator>();
+
 	window->subwindow_order_dirty=false;
 
 }
@@ -2682,8 +2686,14 @@ bool Control::is_stopping_mouse() const {
 Control *Control::get_focus_owner() const {
 
 	ERR_FAIL_COND_V(!is_inside_tree(),NULL);
-	ERR_FAIL_COND_V(!window,NULL);
-	return window->key_focus;
+	ERR_FAIL_COND_V(!data.window,NULL);
+	return data.window->window->key_focus;
+}
+
+
+void Control::warp_mouse(const Point2& p_to_pos) {
+	ERR_FAIL_COND(!is_inside_tree());
+	get_viewport()->warp_mouse(get_global_transform().xform(p_to_pos));
 }
 
 void Control::_bind_methods() {
@@ -2781,6 +2791,9 @@ void Control::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("grab_click_focus"),&Control::grab_click_focus);
 
 	ObjectTypeDB::bind_method(_MD("set_drag_preview","control:Control"),&Control::set_drag_preview);
+
+	ObjectTypeDB::bind_method(_MD("warp_mouse","to_pos"),&Control::warp_mouse);
+
 
 	BIND_VMETHOD(MethodInfo("_input_event",PropertyInfo(Variant::INPUT_EVENT,"event")));
 	BIND_VMETHOD(MethodInfo(Variant::VECTOR2,"get_minimum_size"));

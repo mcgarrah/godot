@@ -67,12 +67,16 @@ env_base.android_source_modules=[]
 env_base.android_source_files=[]
 env_base.android_module_libraries=[]
 env_base.android_manifest_chunk=""
+env_base.android_permission_chunk=""
+env_base.android_appattributes_chunk=""
 env_base.disabled_modules=[]
 
 env_base.__class__.android_module_source = methods.android_module_source
 env_base.__class__.android_module_library = methods.android_module_library
 env_base.__class__.android_module_file = methods.android_module_file
 env_base.__class__.android_module_manifest = methods.android_module_manifest
+env_base.__class__.android_module_permission = methods.android_module_permission
+env_base.__class__.android_module_attribute = methods.android_module_attribute
 env_base.__class__.disable_module = methods.disable_module
 
 env_base.__class__.add_source_files = methods.add_source_files
@@ -116,6 +120,7 @@ opts.Add("CFLAGS", "Custom flags for the C compiler");
 opts.Add("LINKFLAGS", "Custom flags for the linker");
 opts.Add('disable_3d', 'Disable 3D nodes for smaller executable (yes/no)', "no")
 opts.Add('disable_advanced_gui', 'Disable advance 3D gui nodes and behaviors (yes/no)', "no")
+opts.Add('colored', 'Enable colored output for the compilation (yes/no)', 'no')
 
 # add platform specific options
 
@@ -133,8 +138,8 @@ Help(opts.GenerateHelpText(env_base)) # generate help
 # add default include paths
 
 env_base.Append(CPPPATH=['#core','#core/math','#tools','#drivers','#'])
-	
-# configure ENV for platform	
+
+# configure ENV for platform
 env_base.platform_exporters=platform_exporters
 
 """
@@ -299,6 +304,9 @@ if selected_platform in platform_list:
 	if (env['xml']=='yes'):
 		env.Append(CPPFLAGS=['-DXML_ENABLED'])
 
+	if (env['colored']=='yes'):
+		methods.colored(sys,env)
+		
 
 	Export('env')
 
